@@ -1,6 +1,9 @@
 package com.tamil.cameraapp;
 
 import android.Manifest;
+import android.app.AlertDialog;
+import android.content.ContentResolver;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -20,22 +23,39 @@ import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
 import android.view.View;
+import android.webkit.MimeTypeMap;
 import android.widget.ImageView;
 import android.widget.RadioGroup;
 import android.widget.TableRow;
 import android.widget.TextView;
 
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 
 public class MainActivity extends AppCompatActivity {
 
     private static final int STORAGE_REQUEST_CODE = 102;
-    private static final int REQUEST_CAMERA = 5555;
+
     private ImageView imgCamera;
     private String strImagePath = "";
+    public String temp = "";
+
+    private static final int REQUEST_CAMERA = 5555;
+    public static final int REQUEST_IMAGES = 1111;
+    public static final int SELECT_FILE = 2222;
+    public static final int SELECT_DOC = 3333;
+    public String string_filetype = "";
+
+    String string_DIALOG_MENU_TAKEPHOTO = "Take Photo";
+    String string_DIALOG_MENU_CHOOSEIMAGE = "Choose from Gallery";
+    String string_DIALOG_MENU_CHOOSEFILES = "Choose Docs";
+    String string_DIALOG_MENU_CANCEL = "Cancel";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,27 +81,55 @@ public class MainActivity extends AppCompatActivity {
 
         final String dir = Environment.getExternalStorageDirectory() + "/CameraApp/Images/";
 
-        if (Build.VERSION.SDK_INT >= 24) {
-
-            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-            File image = new File(dir, "temp.png");
-            strImagePath = image.getAbsolutePath();
-
-            Log.e("StrImagePath", strImagePath);
-            Uri outputFileUri = FileProvider.getUriForFile(MainActivity.this, "com.tamil.cameraapp.fileprovider", image);
-            intent.putExtra(MediaStore.EXTRA_OUTPUT, outputFileUri);
-            (MainActivity.this).startActivityForResult(intent, REQUEST_CAMERA);
+        final CharSequence[] chararrOptions = {string_DIALOG_MENU_TAKEPHOTO, string_DIALOG_MENU_CHOOSEIMAGE, string_DIALOG_MENU_CANCEL};
 
 
-        } else {
+        AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this,
+                AlertDialog.THEME_HOLO_LIGHT);
+        builder.setItems(chararrOptions, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int item) {
+                if (chararrOptions[item].equals(string_DIALOG_MENU_TAKEPHOTO)) {
 
-            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-            File f = new File(dir, "temp.png");
-            strImagePath = f.getAbsolutePath();
+                    if (Build.VERSION.SDK_INT >= 24) {
 
-            intent.putExtra(MediaStore.EXTRA_OUTPUT, Uri.fromFile(f));
-            (MainActivity.this).startActivityForResult(intent, REQUEST_CAMERA);
-        }
+                        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                        File image = new File(dir, "temp.png");
+                        strImagePath = image.getAbsolutePath();
+
+                        Log.e("StrImagePath", strImagePath);
+                        Uri outputFileUri = FileProvider.getUriForFile(MainActivity.this, "com.tamil.cameraapp.fileprovider", image);
+                        intent.putExtra(MediaStore.EXTRA_OUTPUT, outputFileUri);
+                        (MainActivity.this).startActivityForResult(intent, REQUEST_CAMERA);
+
+
+                    } else {
+
+                        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                        File f = new File(dir, "temp.png");
+                        strImagePath = f.getAbsolutePath();
+
+                        intent.putExtra(MediaStore.EXTRA_OUTPUT, Uri.fromFile(f));
+                        (MainActivity.this).startActivityForResult(intent, REQUEST_CAMERA);
+                    }
+
+
+
+
+                } else if (chararrOptions[item].equals(string_DIALOG_MENU_CHOOSEIMAGE)) {
+                    Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                    intent.setType("image/*");
+                    (MainActivity.this).startActivityForResult(Intent.createChooser(intent, string_DIALOG_MENU_CHOOSEIMAGE), SELECT_FILE);
+                }
+
+                else if (chararrOptions[item].equals(string_DIALOG_MENU_CANCEL)) {
+                    dialog.dismiss();
+                }
+            }
+        });
+        builder.show();
+
+
     }
 
     //OnActivity Result
@@ -90,18 +138,153 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
 
 
-        if (resultCode == RESULT_OK) {
-            if (requestCode == REQUEST_CAMERA) {
+//        if (resultCode == RESULT_OK) {
+//            if (requestCode == REQUEST_CAMERA) {
+//
+//                Bitmap thumbnail = BitmapFactory.decodeFile(strImagePath);
+//                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+//                thumbnail.compress(Bitmap.CompressFormat.JPEG, 70, bytes);
+//                byte[] imageBytes = bytes.toByteArray();
+//                String base64String = Base64.encodeToString(imageBytes, Base64.DEFAULT);
+//                imgCamera.setImageBitmap(thumbnail);
+//
+//            }
+//        }
 
-                Bitmap thumbnail = BitmapFactory.decodeFile(strImagePath);
-                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-                thumbnail.compress(Bitmap.CompressFormat.JPEG, 70, bytes);
-                byte[] imageBytes = bytes.toByteArray();
-                String base64String = Base64.encodeToString(imageBytes, Base64.DEFAULT);
-                imgCamera.setImageBitmap(thumbnail);
+        switch (requestCode) {
+            case SELECT_DOC:
+                if (resultCode == RESULT_OK) {
+                    if (data == null) {
+                        //Display an error
+                        return;
+                    } else {
+                        Uri uri = data.getData();
+                        try {
+                            File file_docs = new File(uri.getPath());
+                            int size = (int) file_docs.length();
 
-            }
+                            ContentResolver cR = getApplicationContext().getContentResolver();
+                            string_filetype = MimeTypeMap.getFileExtensionFromUrl(uri.toString());
+
+                            byte[] bytes = new byte[size];
+                            try {
+                                BufferedInputStream buf = new BufferedInputStream(new FileInputStream(file_docs));
+                                buf.read(bytes, 0, bytes.length);
+                                buf.close();
+                            } catch (FileNotFoundException e) {
+                                // TODO Auto-generated catch block
+                                e.printStackTrace();
+                            } catch (IOException e) {
+                                // TODO Auto-generated catch block
+                                e.printStackTrace();
+                            }
+                            temp = Base64.encodeToString(bytes, Base64.DEFAULT);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+                break;
+            case SELECT_FILE:
+                if (resultCode == RESULT_OK) {
+                    if (data == null) {
+                        return;
+                    } else {
+                        Uri uri = data.getData();
+                        try {
+                            ContentResolver cR = getApplicationContext().getContentResolver();
+                            string_filetype = "png";
+
+                            Bitmap bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
+                            Bitmap scaledBitmap = scaleDown(bitmap, 1024, true);
+                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                            scaledBitmap.compress(
+                                    Bitmap.CompressFormat.JPEG, 90, baos);
+                            byte[] b = baos.toByteArray();
+                            temp = "";
+                            temp = Base64.encodeToString(b, Base64.DEFAULT);
+                            imgCamera.setImageBitmap(bitmap);
+
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+                break;
+            case REQUEST_CAMERA:
+                if (resultCode == RESULT_OK) {
+
+                    if (requestCode == REQUEST_CAMERA) {
+//                        strImagePath = Environment.getExternalStorageDirectory() + "/i2i_ifazidesk/Images/" + strImagename;
+                        Log.i("Imagepath", "PATH : " + strImagePath);
+                        File objFile = new File(strImagePath);
+                        Bitmap objBitmap = null;
+
+                        Uri uri = Uri.parse(strImagePath);
+                        ContentResolver cR = getApplicationContext().getContentResolver();
+                        string_filetype = "png";
+                        try {
+                            try {
+                                BitmapFactory.Options btmapOptions = new BitmapFactory.Options();
+                                btmapOptions.inSampleSize = 5;
+                                objBitmap = BitmapFactory.decodeFile(objFile.getAbsolutePath(), btmapOptions);
+                            } catch (OutOfMemoryError e) {
+                                e.printStackTrace();
+                                System.gc();
+                                try {
+                                    objBitmap = BitmapFactory.decodeFile(objFile.getAbsolutePath());
+                                } catch (OutOfMemoryError e2) {
+                                    e2.printStackTrace();
+                                }
+                            }
+                            Bitmap scaledBitmap = scaleDown(objBitmap, 1024, true);
+                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                            scaledBitmap.compress(
+                                    Bitmap.CompressFormat.JPEG, 90, baos);
+                            byte[] b = baos.toByteArray();
+                            temp = "";
+                            temp = Base64.encodeToString(b,
+                                    Base64.DEFAULT);
+                            temp = "";
+                            temp = Base64.encodeToString(b, Base64.DEFAULT);
+                            imgCamera.setImageBitmap(objBitmap);
+                            try {
+                                objFile.delete();
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+                break;
         }
+    }
+
+    public static Bitmap scaleDown(Bitmap realImage, float maxImageSize,boolean filter) {
+        Bitmap newBitmap;
+        float floatRatio = Math.min(
+                maxImageSize / realImage.getWidth(),
+                maxImageSize / realImage.getHeight());
+        int intWidth = Math.round(floatRatio * realImage.getWidth());
+        int intHeight = Math.round(floatRatio * realImage.getHeight());
+
+        float maxHeight = 2048.0f;
+        float maxWidth = 2048.0f;
+
+        int intmaxheight = Math.round(maxHeight);
+        int intmaxwidth = Math.round(maxWidth);
+
+        if (intWidth > maxHeight || intHeight > maxWidth) {
+            newBitmap = Bitmap.createScaledBitmap(realImage, intmaxwidth,
+                    intmaxheight, filter);
+        } else {
+            newBitmap = Bitmap.createScaledBitmap(realImage, intWidth,
+                    intHeight, filter);
+        }
+
+        return newBitmap;
     }
 
 
@@ -134,7 +317,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, String permissions[],
+                                           int[] grantResults) {
         switch (requestCode) {
 
             case STORAGE_REQUEST_CODE:
@@ -156,3 +340,4 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
+
